@@ -2,8 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Shuffle Up</title>
+<meta name="description" content="Pick a random Commander deck from your active playgroup.gg decks.">
+<meta name="theme-color" content="#14201f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Shuffle Up">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
@@ -29,8 +38,11 @@ html { background: var(--mat); }
 body {
   margin: 0;
   min-height: 100vh;
-  padding-block: 32px 64px;
-  padding-inline: max(16px, 4vw);
+  /* env() keeps content clear of the notch and home bar when installed as an app */
+  padding-top: calc(32px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, 4vw, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, 4vw, env(safe-area-inset-right, 0px));
   background:
     radial-gradient(1200px 600px at 50% -10%, #20332f 0%, transparent 70%),
     var(--mat);
@@ -161,6 +173,14 @@ h1 span { color: var(--brass); }
 .empty strong { color: var(--ink); font: 800 1.3rem var(--display); }
 .loading { color: var(--muted); font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 20px 0; }
 
+.install-hint {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  padding: 12px 14px; border: 1px solid var(--edge); border-radius: 12px;
+  background: var(--mat-2); color: var(--muted); font-size: 14px;
+}
+.install-hint strong { color: var(--ink); }
+.install-hint .link-btn { margin-left: auto; }
+
 footer { color: var(--muted); font-size: 12px; text-align: center; }
 
 @media (prefers-reduced-motion: reduce) { .deck, .deck img { transition: none; } }
@@ -173,7 +193,13 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
       <h1>Shuffle <span>Up</span></h1>
       <p class="tagline">Pick a random Commander deck from your active playgroup.gg decks. Click a deck to bench it and keep it out of the draw.</p>
     </div>
+    <button class="btn" type="button" id="install-btn" hidden>Install app</button>
   </header>
+
+  <div class="install-hint" id="ios-hint" hidden>
+    <span><strong>Install on your iPhone:</strong> tap the Share button in Safari, then <strong>Add to Home Screen</strong>.</span>
+    <button class="link-btn" type="button" id="ios-hint-close">Dismiss</button>
+  </div>
 
   <section>
     <form class="add" id="add-form" autocomplete="off">
@@ -502,6 +528,37 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
     save();
     render();
   });
+
+  // ---- install as an app ----
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  // Android / desktop Chrome: offer an Install button when the browser allows it.
+  let installPrompt = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    $("#install-btn").hidden = false;
+  });
+  $("#install-btn").addEventListener("click", async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    installPrompt = null;
+    $("#install-btn").hidden = true;
+  });
+  window.addEventListener("appinstalled", () => { $("#install-btn").hidden = true; });
+  // iPhone / iPad: Safari has no install prompt, so explain the Share menu instead.
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOS && !standalone && !state.iosHintDismissed) $("#ios-hint").hidden = false;
+  $("#ios-hint-close").addEventListener("click", () => {
+    state.iosHintDismissed = true;
+    save();
+    $("#ios-hint").hidden = true;
+  });
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
 
   render();
   state.playerIds.forEach(loadPlayer);
