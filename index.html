@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shuffle Up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a playmat. Player bar on top, one "seat" per player with its pick slot and deck pool. */
+:root {
+  --mat: #14201f;
+  --mat-2: #1b2a28;
+  --edge: #2c3f3c;
+  --ink: #e9efe9;
+  --muted: #93a7a2;
+  --brass: #d9a441;
+  --brass-ink: #1d1505;
+  --danger: #e5776b;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { background: var(--mat); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding-block: 32px 64px;
+  padding-inline: max(16px, 4vw);
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #20332f 0%, transparent 70%),
+    var(--mat);
+  color: var(--ink);
+  font: 400 15px/1.5 var(--body);
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+a { color: var(--brass); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+h1 {
+  margin: 0;
+  font: 800 clamp(2.4rem, 6vw, 4rem)/0.95 var(--display);
+  letter-spacing: -0.02em;
+}
+h1 span { color: var(--brass); }
+.tagline { margin: 6px 0 0; color: var(--muted); max-width: 52ch; }
+
+/* add-player form */
+.add { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.add input {
+  flex: 1 1 320px; min-width: 0;
+  padding: 12px 14px;
+  background: var(--mat-2); color: var(--ink);
+  border: 1px solid var(--edge); border-radius: 10px;
+  font: inherit;
+}
+.add input::placeholder { color: var(--muted); }
+.btn {
+  padding: 12px 18px; border-radius: 10px;
+  border: 1px solid var(--edge); background: var(--mat-2);
+  font-weight: 600;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--brass); color: var(--brass-ink); border-color: var(--brass); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 2px 0; }
+.error { color: var(--danger); font-size: 14px; margin: 6px 2px 0; }
+
+/* control bar */
+.controls {
+  display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
+  padding: 14px 16px; border: 1px solid var(--edge); border-radius: 14px;
+  background: color-mix(in srgb, var(--mat-2) 70%, transparent);
+}
+.shuffle {
+  font: 800 1.25rem/1 var(--display); letter-spacing: .01em;
+  padding: 14px 26px; border-radius: 12px;
+}
+.toggle { display: inline-flex; gap: 8px; align-items: center; color: var(--muted); }
+.toggle input { accent-color: var(--brass); width: 16px; height: 16px; }
+.controls .spacer { flex: 1; }
+
+/* seats */
+.seats { display: grid; gap: 28px; }
+.seat {
+  display: grid; gap: 18px;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  padding: 18px; border: 1px solid var(--edge); border-radius: 16px;
+  background: var(--mat-2);
+}
+@media (max-width: 760px) { .seat { grid-template-columns: minmax(0, 1fr); } }
+.seat-head { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+.seat-head h2 { margin: 0; font: 800 1.5rem/1.1 var(--display); }
+.count { font: 500 12px/1 var(--mono); color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.seat-head .actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.link-btn {
+  background: none; border: 1px solid transparent; border-radius: 8px;
+  padding: 4px 8px; color: var(--muted); font-size: 13px;
+}
+.link-btn:hover { color: var(--ink); border-color: var(--edge); }
+.link-btn.remove:hover { color: var(--danger); }
+
+/* the pick slot: a card-shaped frame */
+.pick {
+  align-self: start;
+  border-radius: 14px; overflow: hidden;
+  border: 2px solid var(--edge);
+  background: var(--mat);
+  display: grid;
+}
+.pick.landed { border-color: var(--brass); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brass) 18%, transparent); }
+.pick .art { aspect-ratio: 626 / 457; width: 100%; max-width: 100%; object-fit: cover; display: block; background: #0d1514; }
+.pick .art.blank { display: grid; place-items: center; color: var(--muted); font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.pick .meta { padding: 12px 14px 14px; display: grid; gap: 4px; }
+.pick .deck-name { font: 800 1.2rem/1.15 var(--display); text-wrap: balance; }
+.pick .cmdr { color: var(--muted); font-size: 13px; }
+.pick .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.pick.spinning .art { filter: blur(1.5px) saturate(1.2); }
+
+/* deck pool */
+.pool { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); align-content: start; }
+.deck {
+  position: relative; text-align: left; padding: 0;
+  border: 1px solid var(--edge); border-radius: 10px; overflow: hidden;
+  background: var(--mat); display: grid;
+  transition: transform .12s ease, border-color .12s ease;
+}
+.deck:hover { border-color: var(--muted); transform: translateY(-1px); }
+.deck img { aspect-ratio: 626 / 457; width: 100%; object-fit: cover; display: block; transition: filter .15s ease; }
+.deck .info { padding: 8px 10px 10px; display: grid; gap: 2px; min-width: 0; }
+.deck .name { font-weight: 600; font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+.deck .sub { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.deck .stamp {
+  position: absolute; top: 8px; right: 8px;
+  font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  padding: 5px 7px; border-radius: 6px;
+  background: rgba(10, 16, 15, .82); color: var(--muted);
+}
+.deck[aria-pressed="false"] { opacity: .55; }
+.deck[aria-pressed="false"] img { filter: grayscale(1) brightness(.6); }
+.deck[aria-pressed="false"] .stamp { color: var(--danger); }
+.deck.last-pick { border-color: color-mix(in srgb, var(--brass) 60%, var(--edge)); }
+
+.pips { display: inline-flex; gap: 3px; }
+.pip { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.4); }
+.pip.W { background: #f4eccb; } .pip.U { background: #3d8fd1; } .pip.B { background: #4a3f3a; border-color: #8a7d76; }
+.pip.R { background: #e0533f; } .pip.G { background: #2f9a5c; } .pip.C { background: #b9b4ad; }
+.bracket { font: 500 11px/1 var(--mono); color: var(--muted); }
+
+.empty {
+  border: 1px dashed var(--edge); border-radius: 16px; padding: 32px 20px;
+  text-align: center; color: var(--muted); display: grid; gap: 12px; justify-items: center;
+}
+.empty strong { color: var(--ink); font: 800 1.3rem var(--display); }
+.loading { color: var(--muted); font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 20px 0; }
+
+footer { color: var(--muted); font-size: 12px; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) { .deck, .deck img { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Shuffle <span>Up</span></h1>
+      <p class="tagline">Pick a random Commander deck from your active playgroup.gg decks. Click a deck to bench it and keep it out of the draw.</p>
+    </div>
+  </header>
+
+  <section>
+    <form class="add" id="add-form" autocomplete="off">
+      <input id="profile-input" aria-label="playgroup.gg profile link" placeholder="Paste a playgroup.gg profile link, e.g. playgroup.gg/profiles/1024-derpzilla">
+      <button class="btn" type="submit" id="add-btn">Add player</button>
+    </form>
+    <p class="hint">Add one player, or several for game night. Everyone gets their own pick.</p>
+    <p class="error" id="add-error" hidden></p>
+  </section>
+
+  <div class="controls" id="controls" hidden>
+    <button class="btn primary shuffle" id="shuffle-btn" type="button">Shuffle up</button>
+    <label class="toggle"><input type="checkbox" id="avoid-repeat"> Don't repeat last pick</label>
+    <span class="spacer"></span>
+    <span class="count" id="total-count"></span>
+  </div>
+
+  <main class="seats" id="seats"></main>
+
+  <footer>Deck data from the <a href="https://playgroup.gg/api-docs/index.html" target="_blank" rel="noopener">playgroup.gg public API</a>. Only public, non-archived decks appear. Card art via Scryfall.</footer>
+</div>
+
+<script>
+(() => {
+  const API = "https://playgroup.gg/api/public/v1";
+  const STORE_KEY = "shuffleup.v1";
+
+  // ---- persisted state ----
+  const state = load();
+  // runtime-only: per player fetched data
+  const players = new Map(); // id -> { user, decks, status: "loading"|"ok"|"error", error, pick }
+
+  function load() {
+    const base = { playerIds: [], excluded: {}, lastPick: {}, avoidRepeat: false };
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) return Object.assign(base, JSON.parse(raw));
+    } catch {}
+    return base;
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {}
+  }
+
+  // ---- helpers ----
+  const $ = (sel) => document.querySelector(sel);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid != null) n.append(kid);
+    return n;
+  };
+  const slug = (s) => String(s).toLowerCase().normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/[\s_]+/g, "-");
+  const deckUrl = (d) => `https://playgroup.gg/decks/${d.id}-${slug(d.name)}`;
+  const profileUrl = (u) => `https://playgroup.gg/profiles/${u.id}-${slug(u.username)}`;
+  const art = (d) => d.cover_image || d.commander?.art_crop_url || "";
+  const commanderLine = (d) => [d.commander?.name, d.partner?.name].filter(Boolean).join(" + ");
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function randInt(n) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] % n;
+  }
+
+  function parseProfile(input) {
+    const s = input.trim();
+    const m = s.match(/profiles\/(\d+)/i) || s.match(/^(\d+)(?:-[\w-]*)?$/);
+    return m ? Number(m[1]) : null;
+  }
+
+  async function api(path) {
+    const res = await fetch(API + path, { headers: { Accept: "application/json" } });
+    if (res.ok) return res.json();
+    const err = new Error(String(res.status));
+    err.status = res.status;
+    throw err;
+  }
+
+  function explain(err, id) {
+    if (err.status === 404) return `No playgroup.gg profile has the ID ${id}. Copy the link from the profile page; it looks like playgroup.gg/profiles/1234-name.`;
+    if (err.status === 401 || err.status === 403) return `Profile ${id} is private, so its decks can't be read. The owner can make their profile public in playgroup.gg settings.`;
+    if (err.status === 429) return "playgroup.gg is rate limiting requests. Wait a minute and reload.";
+    return "Couldn't reach playgroup.gg. Check your connection and reload the page.";
+  }
+
+  // ---- loading players ----
+  async function loadPlayer(id) {
+    players.set(id, { status: "loading" });
+    render();
+    try {
+      const [user, decks] = await Promise.all([api(`/users/${id}`), api(`/users/${id}/decks`)]);
+      const active = decks.filter((d) => !d.archived).sort((a, b) => a.name.localeCompare(b.name));
+      // Show the previous pick again when the page is reopened.
+      const pick = active.find((d) => d.id === state.lastPick[id]) || null;
+      players.set(id, { status: "ok", user, decks: active, pick });
+    } catch (err) {
+      players.set(id, { status: "error", error: explain(err, id) });
+    }
+    render();
+  }
+
+  async function addPlayer(raw) {
+    const errEl = $("#add-error");
+    errEl.hidden = true;
+    const id = parseProfile(raw);
+    if (!id) {
+      errEl.textContent = "That doesn't look like a profile link. Use the address of the profile page, like playgroup.gg/profiles/1024-derpzilla, or just the number at the start.";
+      errEl.hidden = false;
+      return;
+    }
+    if (state.playerIds.includes(id)) {
+      errEl.textContent = "That player is already on the table.";
+      errEl.hidden = false;
+      return;
+    }
+    state.playerIds.push(id);
+    save();
+    $("#profile-input").value = "";
+    await loadPlayer(id);
+  }
+
+  function removePlayer(id) {
+    state.playerIds = state.playerIds.filter((p) => p !== id);
+    players.delete(id);
+    save();
+    render();
+  }
+
+  // ---- pool / exclusions ----
+  const isIncluded = (d) => !state.excluded[d.id];
+  function eligible(id) {
+    const p = players.get(id);
+    if (!p || p.status !== "ok") return [];
+    let pool = p.decks.filter(isIncluded);
+    const last = state.lastPick[id];
+    if (state.avoidRepeat && last != null && pool.length > 1) pool = pool.filter((d) => d.id !== last);
+    return pool;
+  }
+  function toggleDeck(d) {
+    if (state.excluded[d.id]) delete state.excluded[d.id];
+    else state.excluded[d.id] = true;
+    save();
+    render();
+  }
+  function setAll(id, include) {
+    for (const d of players.get(id).decks) {
+      if (include) delete state.excluded[d.id];
+      else state.excluded[d.id] = true;
+    }
+    save();
+    render();
+  }
+
+  // ---- shuffling ----
+  let spinning = false;
+  async function shuffleAll() {
+    if (spinning) return;
+    const ids = state.playerIds.filter((id) => eligible(id).length > 0);
+    if (!ids.length) return;
+    spinning = true;
+    render();
+    await Promise.all(ids.map((id) => spin(id)));
+    spinning = false;
+    save();
+    render();
+  }
+
+  function spin(id) {
+    const pool = eligible(id);
+    const winner = pool[randInt(pool.length)];
+    const p = players.get(id);
+    const slot = document.querySelector(`[data-pick="${id}"]`);
+    // Save the pick now, so closing the page mid-animation still remembers it.
+    state.lastPick[id] = winner.id;
+    save();
+    const finish = () => { p.pick = winner; };
+    if (reduceMotion || pool.length < 2 || !slot) { finish(); return Promise.resolve(); }
+
+    // Flip through the pool, slowing down, then land on the winner.
+    const img = slot.querySelector("img.art");
+    const nameEl = slot.querySelector(".deck-name");
+    const cmdrEl = slot.querySelector(".cmdr");
+    slot.classList.add("spinning");
+    slot.classList.remove("landed");
+    const steps = 16 + randInt(6);
+    let i = randInt(pool.length);
+    return new Promise((resolve) => {
+      let step = 0;
+      const tick = () => {
+        step++;
+        const d = step >= steps ? winner : pool[i++ % pool.length];
+        if (img) img.src = art(d);
+        if (nameEl) nameEl.textContent = d.name;
+        if (cmdrEl) cmdrEl.textContent = commanderLine(d);
+        if (step >= steps) { finish(); resolve(); return; }
+        setTimeout(tick, 45 + Math.pow(step / steps, 3) * 320);
+      };
+      tick();
+    });
+  }
+
+  // ---- rendering ----
+  function pips(colors) {
+    const list = colors && colors.length ? colors : ["C"];
+    return el("span", { class: "pips", "aria-label": `Colours: ${list.join("")}` },
+      list.map((c) => el("span", { class: `pip ${c}`, title: c })));
+  }
+
+  function pickSlot(id, p) {
+    const d = p.pick;
+    const pool = eligible(id);
+    if (!d) {
+      const preview = pool[0];
+      return el("div", { class: "pick", "data-pick": id },
+        preview
+          ? el("img", { class: "art", src: art(preview), alt: "", style: "filter: grayscale(1) brightness(.35)" })
+          : el("div", { class: "art blank" }, "No decks in the pool"),
+        el("div", { class: "meta" },
+          el("div", { class: "deck-name" }, pool.length ? "Ready to shuffle" : "Pool is empty"),
+          el("div", { class: "cmdr" }, pool.length ? `${pool.length} deck${pool.length === 1 ? "" : "s"} in the draw` : "Bring a deck back from the bench to shuffle."),
+        ));
+    }
+    return el("div", { class: "pick landed", "data-pick": id },
+      el("img", { class: "art", src: art(d), alt: `Art for ${d.commander?.name ?? d.name}` }),
+      el("div", { class: "meta" },
+        el("div", { class: "deck-name" }, d.name),
+        el("div", { class: "cmdr" }, commanderLine(d)),
+        el("div", { class: "row" },
+          pips(d.color_identity),
+          d.bracket ? el("span", { class: "bracket" }, `Bracket ${d.bracket}`) : null,
+          el("a", { href: deckUrl(d), target: "_blank", rel: "noopener" }, "Open deck"),
+        ),
+      ));
+  }
+
+  function deckTile(id, d) {
+    const included = isIncluded(d);
+    const wasLast = state.lastPick[id] === d.id;
+    return el("button", {
+      type: "button",
+      class: "deck" + (wasLast ? " last-pick" : ""),
+      "aria-pressed": String(included),
+      title: included ? "In the pool. Click to bench." : "Benched. Click to put back in the pool.",
+      onclick: () => toggleDeck(d),
+      disabled: spinning,
+    },
+      el("img", { src: art(d), alt: "", loading: "lazy" }),
+      el("span", { class: "stamp" }, included ? (wasLast ? "Last pick" : "In pool") : "Benched"),
+      el("span", { class: "info" },
+        el("span", { class: "name" }, d.name),
+        el("span", { class: "sub" }, commanderLine(d)),
+        el("span", { class: "row", style: "display:flex;gap:8px;align-items:center;margin-top:4px" },
+          pips(d.color_identity),
+          d.bracket ? el("span", { class: "bracket" }, `B${d.bracket}`) : null),
+      ));
+  }
+
+  function seat(id) {
+    const p = players.get(id) || { status: "loading" };
+    const removeBtn = el("button", { type: "button", class: "link-btn remove", onclick: () => removePlayer(id) }, "Remove");
+
+    if (p.status === "loading") {
+      return el("section", { class: "seat" },
+        el("div", { class: "seat-head" }, el("h2", {}, `Player ${id}`), el("div", { class: "actions" }, removeBtn)),
+        el("div", { class: "loading", style: "grid-column:1/-1" }, "Fetching decks…"));
+    }
+    if (p.status === "error") {
+      return el("section", { class: "seat" },
+        el("div", { class: "seat-head" }, el("h2", {}, `Player ${id}`), el("div", { class: "actions" },
+          el("button", { type: "button", class: "link-btn", onclick: () => loadPlayer(id) }, "Retry"), removeBtn)),
+        el("p", { class: "error", style: "grid-column:1/-1" }, p.error));
+    }
+
+    const inPool = p.decks.filter(isIncluded).length;
+    return el("section", { class: "seat" },
+      el("div", { class: "seat-head" },
+        el("h2", {}, el("a", { href: profileUrl(p.user), target: "_blank", rel: "noopener", style: "color:inherit;text-decoration:none" }, p.user.username)),
+        el("span", { class: "count" }, `${inPool} of ${p.decks.length} decks in pool`),
+        el("div", { class: "actions" },
+          el("button", { type: "button", class: "link-btn", onclick: () => setAll(id, true), disabled: spinning }, "Include all"),
+          el("button", { type: "button", class: "link-btn", onclick: () => setAll(id, false), disabled: spinning }, "Bench all"),
+          removeBtn)),
+      pickSlot(id, p),
+      p.decks.length
+        ? el("div", { class: "pool" }, p.decks.map((d) => deckTile(id, d)))
+        : el("p", { class: "hint" }, "This player has no public, active decks on playgroup.gg."));
+  }
+
+  function render() {
+    const seats = $("#seats");
+    seats.replaceChildren();
+    $("#controls").hidden = state.playerIds.length === 0;
+    $("#avoid-repeat").checked = state.avoidRepeat;
+
+    if (!state.playerIds.length) {
+      seats.append(el("div", { class: "empty" },
+        el("strong", {}, "No players at the table yet"),
+        el("span", {}, "Paste a playgroup.gg profile link above to load that player's active decks."),
+        el("button", { type: "button", class: "btn", onclick: () => addPlayer("1024") }, "Try an example profile")));
+      return;
+    }
+    for (const id of state.playerIds) seats.append(seat(id));
+
+    const readyCount = state.playerIds.filter((id) => eligible(id).length).length;
+    const btn = $("#shuffle-btn");
+    btn.disabled = spinning || readyCount === 0;
+    btn.textContent = spinning ? "Shuffling…" : "Shuffle up";
+    const total = state.playerIds.reduce((n, id) => n + eligible(id).length, 0);
+    $("#total-count").textContent = `${total} deck${total === 1 ? "" : "s"} in the draw`;
+  }
+
+  // ---- wire up ----
+  $("#add-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    addPlayer($("#profile-input").value);
+  });
+  $("#shuffle-btn").addEventListener("click", shuffleAll);
+  $("#avoid-repeat").addEventListener("change", (e) => {
+    state.avoidRepeat = e.target.checked;
+    save();
+    render();
+  });
+
+  render();
+  state.playerIds.forEach(loadPlayer);
+})();
+</script>
+</body>
+</html>
