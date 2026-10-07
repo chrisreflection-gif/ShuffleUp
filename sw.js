@@ -2,7 +2,7 @@
 // - The app itself (page, manifest, icons) is cached so it opens with poor or no signal.
 // - playgroup.gg deck data is fetched fresh when online; the last copy is used when offline.
 // Bump VERSION whenever the app files change so phones pick up the new version.
-const VERSION = "v1";
+const VERSION = "v2";
 const APP_CACHE = `shuffleup-app-${VERSION}`;
 const DATA_CACHE = "shuffleup-data";
 const APP_FILES = [

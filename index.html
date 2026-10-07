@@ -158,6 +158,8 @@ h1 span { color: var(--brass); }
 .deck[aria-pressed="false"] { opacity: .55; }
 .deck[aria-pressed="false"] img { filter: grayscale(1) brightness(.6); }
 .deck[aria-pressed="false"] .stamp { color: var(--danger); }
+.deck.sitting-out { opacity: .75; }
+.deck.sitting-out img { filter: saturate(.35) brightness(.75); }
 .deck.last-pick { border-color: color-mix(in srgb, var(--brass) 60%, var(--edge)); }
 
 .pips { display: inline-flex; gap: 3px; }
@@ -213,6 +215,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
   <div class="controls" id="controls" hidden>
     <button class="btn primary shuffle" id="shuffle-btn" type="button">Shuffle up</button>
     <label class="toggle"><input type="checkbox" id="avoid-repeat"> Don't repeat last pick</label>
+    <label class="toggle" title="Only draw from the less-played half of each player's pool, by games logged on playgroup.gg"><input type="checkbox" id="favour-low"> Favour least-played</label>
     <span class="spacer"></span>
     <span class="count" id="total-count"></span>
   </div>
@@ -233,7 +236,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
   const players = new Map(); // id -> { user, decks, status: "loading"|"ok"|"error", error, pick }
 
   function load() {
-    const base = { playerIds: [], excluded: {}, lastPick: {}, avoidRepeat: false };
+    const base = { playerIds: [], excluded: {}, lastPick: {}, avoidRepeat: false, favourLow: false };
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) return Object.assign(base, JSON.parse(raw));
@@ -336,10 +339,22 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
 
   // ---- pool / exclusions ----
   const isIncluded = (d) => !state.excluded[d.id];
-  function eligible(id) {
+  const plays = (d) => (d.games_won || 0) + (d.games_lost || 0);
+  // The less-played half of a pool (rounded up). Decks tied with the cut-off stay in.
+  function leastPlayed(pool) {
+    if (pool.length < 3) return pool;
+    const counts = pool.map(plays).sort((a, b) => a - b);
+    const cutoff = counts[Math.ceil(counts.length / 2) - 1];
+    return pool.filter((d) => plays(d) <= cutoff);
+  }
+  function favoured(id) {
     const p = players.get(id);
     if (!p || p.status !== "ok") return [];
-    let pool = p.decks.filter(isIncluded);
+    const pool = p.decks.filter(isIncluded);
+    return state.favourLow ? leastPlayed(pool) : pool;
+  }
+  function eligible(id) {
+    let pool = favoured(id);
     const last = state.lastPick[id];
     if (state.avoidRepeat && last != null && pool.length > 1) pool = pool.filter((d) => d.id !== last);
     return pool;
@@ -441,25 +456,30 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
       ));
   }
 
-  function deckTile(id, d) {
+  function deckTile(id, d, favouredIds) {
     const included = isIncluded(d);
+    const sittingOut = included && !favouredIds.has(d.id);
     const wasLast = state.lastPick[id] === d.id;
+    const n = plays(d);
     return el("button", {
       type: "button",
-      class: "deck" + (wasLast ? " last-pick" : ""),
+      class: "deck" + (wasLast ? " last-pick" : "") + (sittingOut ? " sitting-out" : ""),
       "aria-pressed": String(included),
-      title: included ? "In the pool. Click to bench." : "Benched. Click to put back in the pool.",
+      title: !included ? "Benched. Click to put back in the pool."
+        : sittingOut ? "Played more than most, so it sits out while Favour least-played is on. Click to bench."
+        : "In the pool. Click to bench.",
       onclick: () => toggleDeck(d),
       disabled: spinning,
     },
       el("img", { src: art(d), alt: "", loading: "lazy" }),
-      el("span", { class: "stamp" }, included ? (wasLast ? "Last pick" : "In pool") : "Benched"),
+      el("span", { class: "stamp" }, !included ? "Benched" : wasLast ? "Last pick" : sittingOut ? "Played lots" : "In pool"),
       el("span", { class: "info" },
         el("span", { class: "name" }, d.name),
         el("span", { class: "sub" }, commanderLine(d)),
         el("span", { class: "row", style: "display:flex;gap:8px;align-items:center;margin-top:4px" },
           pips(d.color_identity),
-          d.bracket ? el("span", { class: "bracket" }, `B${d.bracket}`) : null),
+          d.bracket ? el("span", { class: "bracket" }, `B${d.bracket}`) : null,
+          el("span", { class: "bracket" }, `${n} game${n === 1 ? "" : "s"}`)),
       ));
   }
 
@@ -480,6 +500,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
     }
 
     const inPool = p.decks.filter(isIncluded).length;
+    const favouredIds = new Set(favoured(id).map((d) => d.id));
     return el("section", { class: "seat" },
       el("div", { class: "seat-head" },
         el("h2", {}, el("a", { href: profileUrl(p.user), target: "_blank", rel: "noopener", style: "color:inherit;text-decoration:none" }, p.user.username)),
@@ -490,7 +511,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
           removeBtn)),
       pickSlot(id, p),
       p.decks.length
-        ? el("div", { class: "pool" }, p.decks.map((d) => deckTile(id, d)))
+        ? el("div", { class: "pool" }, p.decks.map((d) => deckTile(id, d, favouredIds)))
         : el("p", { class: "hint" }, "This player has no public, active decks on playgroup.gg."));
   }
 
@@ -499,6 +520,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
     seats.replaceChildren();
     $("#controls").hidden = state.playerIds.length === 0;
     $("#avoid-repeat").checked = state.avoidRepeat;
+    $("#favour-low").checked = state.favourLow;
 
     if (!state.playerIds.length) {
       seats.append(el("div", { class: "empty" },
@@ -525,6 +547,11 @@ footer { color: var(--muted); font-size: 12px; text-align: center; }
   $("#shuffle-btn").addEventListener("click", shuffleAll);
   $("#avoid-repeat").addEventListener("change", (e) => {
     state.avoidRepeat = e.target.checked;
+    save();
+    render();
+  });
+  $("#favour-low").addEventListener("change", (e) => {
+    state.favourLow = e.target.checked;
     save();
     render();
   });
